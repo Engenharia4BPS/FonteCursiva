@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.3.0 — sistema cursivo conectado
+
+- referência visual consolidada em uma cursiva infantil fluida, leve e contínua;
+- definição de métricas globais de baseline, x-height, ascender, cap height, descender e altura de conexão;
+- cada minúscula conectável passa a começar e terminar no mesmo ponto geométrico de junção;
+- versão Model e Trace passam a derivar do mesmo esqueleto de traço;
+- QA passa a incluir pares `Ca`, `at`, `ta`, `ar`, `ri`, `in`, `na` e palavras de teste;
+- prioridade de aprovação passa a ser fluidez da palavra antes da beleza isolada do glifo.
+
 ## v0.2.3 — protótipo Word
 
 - estrutura TrueType mais compatível com Microsoft Word;
