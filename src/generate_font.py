@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""FonteCursiva v0.3.2 — connected cursive system prototype.
+"""FonteCursiva v0.4.0 — lowercase core expansion.
 
 Design rule: every connected glyph begins at JOIN_IN=(0, JOIN_Y) and ends at
 JOIN_OUT=(advance, JOIN_Y). This makes the baseline connector geometrically
@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 UPM=2048
 S=UPM/1000.0
-VERSION='0.3.2'
+VERSION='0.4.0'
 BASELINE=0
 X_HEIGHT=285
 ASCENDER=650
@@ -26,7 +26,7 @@ TRACE_RADIUS=10.0
 MODEL_SPACING=9
 MODEL_RADIUS=22
 
-ADV={'C':560,'c':350,'a':405,'t':300,'r':350,'i':225,'n':420}
+ADV={'C':560,'a':405,'c':350,'e':350,'i':225,'l':250,'m':610,'n':420,'o':390,'r':350,'t':300,'u':420}
 
 def cubic(p0,p1,p2,p3,n=55):
     out=[]
@@ -44,7 +44,6 @@ def chain(*segments):
     return out
 
 def ln(a,b,n=24): return [(a[0]+(b[0]-a[0])*i/n,a[1]+(b[1]-a[1])*i/n) for i in range(n+1)]
-
 def scpath(path): return [(x*S,y*S) for x,y in path]
 
 def rs(path,spacing):
@@ -67,8 +66,6 @@ def circle(pen,x,y,r,steps=18):
     for p in ps[1:]: pen.lineTo(p)
     pen.closePath()
 
-# One continuous main stroke per lowercase glyph. Separate strokes only for dot/crossbar.
-# All main strokes start at x=0,y=JOIN_Y and terminate exactly at x=advance,y=JOIN_Y.
 STROKES={}
 
 STROKES['c']=[chain(
@@ -125,7 +122,60 @@ STROKES['n']=[chain(
     seg((359,139),(351,94),(374,65),(420,JOIN_Y)),
 )]
 
-# Capital C has a continuous exit at the same connection height.
+STROKES['e']=[chain(
+    seg((0,JOIN_Y),(34,88),(70,129),(104,178)),
+    seg((104,178),(139,227),(199,246),(247,224)),
+    seg((247,224),(286,206),(287,169),(253,151)),
+    seg((253,151),(211,129),(145,143),(111,186)),
+    seg((111,186),(73,139),(71,77),(127,43)),
+    seg((127,43),(194,2),(281,25),(350,JOIN_Y)),
+)]
+
+STROKES['l']=[chain(
+    seg((0,JOIN_Y),(37,91),(73,136),(103,195)),
+    seg((103,195),(130,300),(151,495),(168,624)),
+    seg((168,624),(179,693),(219,701),(232,642)),
+    seg((232,642),(244,584),(208,495),(171,407)),
+    seg((171,407),(131,310),(111,210),(116,130)),
+    seg((116,130),(120,78),(164,48),(207,55)),
+    seg((207,55),(224,58),(239,66),(250,JOIN_Y)),
+)]
+
+STROKES['m']=[chain(
+    seg((0,JOIN_Y),(37,90),(72,128),(100,174)),
+    seg((100,174),(114,226),(128,281),(140,313)),
+    seg((140,313),(145,236),(147,149),(146,73)),
+    seg((146,73),(160,198),(218,288),(286,286)),
+    seg((286,286),(348,284),(365,217),(356,143)),
+    seg((356,143),(353,119),(351,95),(350,73)),
+    seg((350,73),(365,198),(425,288),(493,286)),
+    seg((493,286),(555,284),(573,215),(565,139)),
+    seg((565,139),(558,94),(576,69),(610,JOIN_Y)),
+)]
+
+STROKES['o']=[chain(
+    seg((0,JOIN_Y),(35,88),(70,125),(102,171)),
+    seg((102,171),(139,226),(199,258),(260,250)),
+    seg((260,250),(330,241),(354,172),(334,105)),
+    seg((334,105),(314,40),(246,7),(174,27)),
+    seg((174,27),(101,47),(79,123),(110,187)),
+    seg((110,187),(143,255),(245,274),(310,222)),
+    seg((310,222),(337,201),(342,170),(338,142)),
+    seg((338,142),(335,101),(352,81),(390,JOIN_Y)),
+)]
+
+STROKES['u']=[chain(
+    seg((0,JOIN_Y),(37,90),(72,129),(100,174)),
+    seg((100,174),(118,221),(128,274),(129,313)),
+    seg((129,313),(130,235),(132,149),(132,87)),
+    seg((132,87),(136,35),(177,15),(218,34)),
+    seg((218,34),(263,55),(281,112),(280,177)),
+    seg((280,177),(279,232),(283,276),(292,309)),
+    seg((292,309),(299,235),(302,151),(301,88)),
+    seg((301,88),(304,48),(346,44),(382,62)),
+    seg((382,62),(398,69),(408,72),(420,JOIN_Y)),
+)]
+
 STROKES['C']=[chain(
     seg((0,JOIN_Y),(48,79),(85,134),(105,235)),
     seg((105,235),(123,505),(271,702),(447,690)),
@@ -163,7 +213,7 @@ def build(base,out,family,dotted):
     cmap={}
     for t in font['cmap'].tables:
         if t.isUnicode(): cmap.update(t.cmap)
-    for ch in 'Ccatrin':
+    for ch in 'Caceilmnortu':
         name=cmap[ord(ch)]; glyf[name]=make_glyph(ch,dotted); hmtx[name]=(int(ADV[ch]*S),0)
     font['hhea'].ascent=int(800*S); font['hhea'].descent=int(-220*S)
     font['OS/2'].sTypoAscender=int(800*S); font['OS/2'].sTypoDescender=int(-220*S)
@@ -175,8 +225,8 @@ def preview(base,model,trace,out):
     title=ImageFont.truetype(str(base),38); fm=ImageFont.truetype(str(model),180); ft=ImageFont.truetype(str(trace),180); fs=ImageFont.truetype(str(trace),100)
     d.text((60,25),f'FonteCursiva v{VERSION} — sistema de conexão',font=title,fill='black')
     d.text((60,100),'Catarina',font=fm,fill='black'); d.text((60,330),'Catarina',font=ft,fill='gray')
-    d.text((60,590),'Ca   at   ta   ar   ri   in   na',font=fs,fill='gray')
-    d.text((60,760),'catarina   Catarina   cat   rat   rain',font=fs,fill='gray')
+    d.text((60,590),'ae   ce   ei   il   lm   mn   no   or   rt   tu   ua',font=fs,fill='gray')
+    d.text((60,760),'catarina   menina   lua   amor   rotina   numero',font=fs,fill='gray')
     y0=1110
     d.line((60,y0,1940,y0),fill='gray',width=1)
     d.line((60,y0-int(X_HEIGHT*S*0.48),1940,y0-int(X_HEIGHT*S*0.48)),fill='lightgray',width=1)
@@ -186,6 +236,6 @@ def preview(base,model,trace,out):
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--base-font',type=Path,required=True); ap.add_argument('--output-dir',type=Path,default=Path('dist')); a=ap.parse_args(); a.output_dir.mkdir(parents=True,exist_ok=True)
     model=a.output_dir/f'FonteCursivaModel-v{VERSION}.ttf'; trace=a.output_dir/f'FonteCursivaTrace-v{VERSION}.ttf'; prev=a.output_dir/f'preview-v{VERSION}.png'
-    build(a.base_font,model,'FonteCursiva Model 032',False); build(a.base_font,trace,'FonteCursiva Trace 032',True); preview(a.base_font,model,trace,prev)
+    build(a.base_font,model,'FonteCursiva Model 040',False); build(a.base_font,trace,'FonteCursiva Trace 040',True); preview(a.base_font,model,trace,prev)
     print(model); print(trace); print(prev)
 if __name__=='__main__': main()
