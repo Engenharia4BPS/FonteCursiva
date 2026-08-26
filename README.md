@@ -30,17 +30,34 @@ Caracteres experimentais atuais:
 
 `C c a t r i n`
 
-## Estrutura planejada
+## Estrutura
 
 ```text
 FonteCursiva/
+├── .github/workflows/build-font.yml
 ├── README.md
 ├── CHANGELOG.md
+├── requirements.txt
 ├── docs/
-├── src/
-├── fonts/
-└── previews/
+│   ├── BUILD.md
+│   └── DESIGN.md
+└── src/
+    └── generate_font.py
 ```
+
+Os arquivos gerados ficam em `dist/` e não são versionados diretamente.
+
+## Build automático
+
+O GitHub Actions gera automaticamente:
+
+- `FonteCursivaModel-v0.2.3.ttf`
+- `FonteCursivaTrace-v0.2.3.ttf`
+- `preview-v0.2.3.png`
+
+O resultado é publicado como artifact do workflow **Build font**.
+
+Para detalhes do build local, consulte [`docs/BUILD.md`](docs/BUILD.md).
 
 ## Próximas etapas
 
