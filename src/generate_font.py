@@ -1,241 +1,122 @@
 #!/usr/bin/env python3
-"""FonteCursiva v0.4.0 — lowercase core expansion.
-
-Design rule: every connected glyph begins at JOIN_IN=(0, JOIN_Y) and ends at
-JOIN_OUT=(advance, JOIN_Y). This makes the baseline connector geometrically
-continuous across glyph boundaries instead of relying on visual overlap.
-"""
 from __future__ import annotations
-import argparse, math
+import math
 from pathlib import Path
-from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
+from fontTools.pens.ttGlyphPen import TTGlyphPen
 from PIL import Image, ImageDraw, ImageFont
 
 UPM=2048
 S=UPM/1000.0
-VERSION='0.4.0'
-BASELINE=0
-X_HEIGHT=285
-ASCENDER=650
-CAP_HEIGHT=700
-DESCENDER=-210
+VERSION='1.0.0'
 JOIN_Y=72
-TRACE_SPACING=76
-TRACE_RADIUS=10.0
-MODEL_SPACING=9
-MODEL_RADIUS=22
+TRACE_SPACING=72
+TRACE_RADIUS=9.2
+MODEL_SPACING=8
+MODEL_RADIUS=20
 
-ADV={'C':560,'a':405,'c':350,'e':350,'i':225,'l':250,'m':610,'n':420,'o':390,'r':350,'t':300,'u':420}
+ADV={'a':390,'b':390,'c':330,'d':390,'e':300,'f':330,'g':390,'h':410,'i':210,'j':230,'k':390,'l':245,'m':590,'n':405,'o':380,'p':390,'q':390,'r':315,'s':315,'t':275,'u':400,'v':360,'w':540,'x':360,'y':390,'z':360}
 
 def cubic(p0,p1,p2,p3,n=55):
     out=[]
     for i in range(n+1):
-        t=i/n;u=1-t
-        out.append((u**3*p0[0]+3*u*u*t*p1[0]+3*u*t*t*p2[0]+t**3*p3[0],
-                    u**3*p0[1]+3*u*u*t*p1[1]+3*u*t*t*p2[1]+t**3*p3[1]))
+        t=i/n; u=1-t
+        out.append((u**3*p0[0]+3*u*u*t*p1[0]+3*u*t*t*p2[0]+t**3*p3[0],u**3*p0[1]+3*u*u*t*p1[1]+3*u*t*t*p2[1]+t**3*p3[1]))
     return out
 
 def seg(a,b,c,d): return cubic(a,b,c,d)
-def chain(*segments):
+def chain(*parts):
     out=[]
-    for s in segments:
-        out.extend(s if not out else s[1:])
+    for p in parts: out.extend(p if not out else p[1:])
     return out
 
 def ln(a,b,n=24): return [(a[0]+(b[0]-a[0])*i/n,a[1]+(b[1]-a[1])*i/n) for i in range(n+1)]
-def scpath(path): return [(x*S,y*S) for x,y in path]
-
 def rs(path,spacing):
     if not path: return []
-    pts=[path[0]]; remain=spacing; prev=path[0]
+    out=[path[0]]; remain=spacing; prev=path[0]
     for cur in path[1:]:
         while True:
             dx,dy=cur[0]-prev[0],cur[1]-prev[1]; d=math.hypot(dx,dy)
-            if d<1e-9: break
-            if d<remain:
-                remain-=d; prev=cur; break
-            q=remain/d; prev=(prev[0]+dx*q,prev[1]+dy*q); pts.append(prev); remain=spacing
-    if math.hypot(pts[-1][0]-path[-1][0],pts[-1][1]-path[-1][1]) > spacing*0.42:
-        pts.append(path[-1])
-    return pts
+            if d < 1e-9: break
+            if d < remain: remain-=d; prev=cur; break
+            q=remain/d; prev=(prev[0]+dx*q,prev[1]+dy*q); out.append(prev); remain=spacing
+    if math.hypot(out[-1][0]-path[-1][0],out[-1][1]-path[-1][1]) > spacing*.42: out.append(path[-1])
+    return out
 
-def circle(pen,x,y,r,steps=18):
-    ps=[(x+math.cos(2*math.pi*i/steps)*r,y+math.sin(2*math.pi*i/steps)*r) for i in range(steps)]
-    pen.moveTo(ps[0])
-    for p in ps[1:]: pen.lineTo(p)
+def circle(pen,x,y,r,steps=16):
+    pts=[(x+math.cos(2*math.pi*i/steps)*r,y+math.sin(2*math.pi*i/steps)*r) for i in range(steps)]
+    pen.moveTo(pts[0])
+    for p in pts[1:]: pen.lineTo(p)
     pen.closePath()
 
-STROKES={}
+def entry(x=95,y=180): return seg((0,JOIN_Y),(34,88),(68,126),(x,y))
+def exitseg(x0,y0,adv): return seg((x0,y0),(adv-55,45),(adv-26,64),(adv,JOIN_Y))
+def oval_body(x=105):
+    return chain(seg((x,180),(128,232),(190,270),(250,260)),seg((250,260),(315,250),(333,177),(311,106)),seg((311,106),(286,35),(215,10),(150,36)),seg((150,36),(83,62),(77,142),(105,180)))
 
-STROKES['c']=[chain(
-    seg((0,JOIN_Y),(38,86),(75,125),(102,170)),
-    seg((102,170),(137,232),(198,260),(258,248)),
-    seg((258,248),(205,267),(130,247),(86,190)),
-    seg((86,190),(43,134),(48,60),(116,31)),
-    seg((116,31),(195,0),(274,26),(350,JOIN_Y)),
-)]
-
-STROKES['a']=[chain(
-    seg((0,JOIN_Y),(35,88),(70,122),(98,165)),
-    seg((98,165),(132,225),(193,260),(255,248)),
-    seg((255,248),(319,235),(340,169),(318,103)),
-    seg((318,103),(294,37),(222,8),(151,34)),
-    seg((151,34),(86,59),(76,149),(120,204)),
-    seg((120,204),(170,263),(266,263),(307,194)),
-    seg((307,194),(326,160),(307,108),(319,78)),
-    seg((319,78),(338,47),(370,48),(405,JOIN_Y)),
-)]
-
-STROKES['t']=[chain(
-    seg((0,JOIN_Y),(40,90),(75,127),(102,173)),
-    seg((102,173),(122,280),(145,490),(163,635)),
-    seg((163,635),(169,682),(190,684),(191,627)),
-    seg((191,627),(180,447),(166,238),(168,112)),
-    seg((168,112),(171,88),(192,72),(216,69)),
-    seg((216,69),(239,67),(265,69),(300,JOIN_Y)),
-), ln((102,392),(254,405))]
-
-STROKES['r']=[chain(
-    seg((0,JOIN_Y),(38,90),(72,128),(100,174)),
-    seg((100,174),(118,228),(132,281),(145,314)),
-    seg((145,314),(158,268),(184,235),(220,228)),
-    seg((220,228),(256,221),(282,232),(294,258)),
-    seg((294,258),(289,206),(261,151),(229,111)),
-    seg((229,111),(248,84),(278,69),(311,70)),
-    seg((311,70),(326,70),(338,72),(350,JOIN_Y)),
-)]
-
-STROKES['i']=[chain(
-    seg((0,JOIN_Y),(37,90),(70,132),(98,194)),
-    seg((98,194),(111,152),(115,101),(110,61)),
-    seg((110,61),(123,39),(153,45),(181,59)),
-    seg((181,59),(196,67),(210,71),(225,JOIN_Y)),
-), [(111,401),(111,401)]]
-
-STROKES['n']=[chain(
-    seg((0,JOIN_Y),(37,90),(72,128),(100,174)),
-    seg((100,174),(114,226),(128,281),(140,313)),
-    seg((140,313),(145,236),(147,149),(146,73)),
-    seg((146,73),(160,198),(222,288),(292,286)),
-    seg((292,286),(356,284),(371,214),(359,139)),
-    seg((359,139),(351,94),(374,65),(420,JOIN_Y)),
-)]
-
-STROKES['e']=[chain(
-    seg((0,JOIN_Y),(34,88),(70,129),(104,178)),
-    seg((104,178),(139,227),(199,246),(247,224)),
-    seg((247,224),(286,206),(287,169),(253,151)),
-    seg((253,151),(211,129),(145,143),(111,186)),
-    seg((111,186),(73,139),(71,77),(127,43)),
-    seg((127,43),(194,2),(281,25),(350,JOIN_Y)),
-)]
-
-STROKES['l']=[chain(
-    seg((0,JOIN_Y),(37,91),(73,136),(103,195)),
-    seg((103,195),(130,300),(151,495),(168,624)),
-    seg((168,624),(179,693),(219,701),(232,642)),
-    seg((232,642),(244,584),(208,495),(171,407)),
-    seg((171,407),(131,310),(111,210),(116,130)),
-    seg((116,130),(120,78),(164,48),(207,55)),
-    seg((207,55),(224,58),(239,66),(250,JOIN_Y)),
-)]
-
-STROKES['m']=[chain(
-    seg((0,JOIN_Y),(37,90),(72,128),(100,174)),
-    seg((100,174),(114,226),(128,281),(140,313)),
-    seg((140,313),(145,236),(147,149),(146,73)),
-    seg((146,73),(160,198),(218,288),(286,286)),
-    seg((286,286),(348,284),(365,217),(356,143)),
-    seg((356,143),(353,119),(351,95),(350,73)),
-    seg((350,73),(365,198),(425,288),(493,286)),
-    seg((493,286),(555,284),(573,215),(565,139)),
-    seg((565,139),(558,94),(576,69),(610,JOIN_Y)),
-)]
-
-STROKES['o']=[chain(
-    seg((0,JOIN_Y),(35,88),(70,125),(102,171)),
-    seg((102,171),(139,226),(199,258),(260,250)),
-    seg((260,250),(330,241),(354,172),(334,105)),
-    seg((334,105),(314,40),(246,7),(174,27)),
-    seg((174,27),(101,47),(79,123),(110,187)),
-    seg((110,187),(143,255),(245,274),(310,222)),
-    seg((310,222),(337,201),(342,170),(338,142)),
-    seg((338,142),(335,101),(352,81),(390,JOIN_Y)),
-)]
-
-STROKES['u']=[chain(
-    seg((0,JOIN_Y),(37,90),(72,129),(100,174)),
-    seg((100,174),(118,221),(128,274),(129,313)),
-    seg((129,313),(130,235),(132,149),(132,87)),
-    seg((132,87),(136,35),(177,15),(218,34)),
-    seg((218,34),(263,55),(281,112),(280,177)),
-    seg((280,177),(279,232),(283,276),(292,309)),
-    seg((292,309),(299,235),(302,151),(301,88)),
-    seg((301,88),(304,48),(346,44),(382,62)),
-    seg((382,62),(398,69),(408,72),(420,JOIN_Y)),
-)]
-
-STROKES['C']=[chain(
-    seg((0,JOIN_Y),(48,79),(85,134),(105,235)),
-    seg((105,235),(123,505),(271,702),(447,690)),
-    seg((447,690),(514,686),(550,644),(530,598)),
-    seg((530,598),(506,559),(462,554),(432,580)),
-    seg((432,580),(403,607),(405,650),(428,675)),
-), chain(
-    seg((105,235),(92,110),(156,16),(284,0)),
-    seg((284,0),(398,-7),(485,28),(560,JOIN_Y)),
-)]
+ST={}
+ST['a']=[chain(entry(),oval_body(),seg((105,180),(162,247),(264,264),(310,205)),seg((310,205),(322,165),(307,110),(309,82)),exitseg(309,82,ADV['a']))]
+ST['b']=[chain(entry(92,185),seg((92,185),(118,310),(145,520),(170,635)),seg((170,635),(180,690),(218,698),(230,644)),seg((230,644),(243,585),(211,500),(176,417)),seg((176,417),(140,331),(119,242),(122,164)),seg((122,164),(138,224),(190,260),(245,249)),seg((245,249),(307,237),(330,174),(313,110)),seg((313,110),(296,50),(249,24),(206,45)),exitseg(206,45,ADV['b']))]
+ST['c']=[chain(entry(95,178),seg((95,178),(130,235),(192,261),(254,250)),seg((254,250),(213,264),(146,248),(103,198)),seg((103,198),(61,149),(57,79),(117,42)),exitseg(117,42,ADV['c']))]
+ST['d']=[chain(entry(),oval_body(),seg((105,180),(164,248),(266,264),(309,205)),seg((309,205),(323,355),(344,543),(360,642)),seg((360,642),(366,677),(382,678),(380,632)),seg((380,632),(365,420),(342,218),(334,105)),seg((334,105),(329,61),(351,57),(390,JOIN_Y)))]
+ST['e']=[chain(entry(86,172),seg((86,172),(105,220),(122,274),(105,294)),seg((105,294),(85,318),(58,294),(57,254)),seg((57,254),(56,203),(98,158),(159,153)),seg((159,153),(215,148),(246,122),(245,88)),exitseg(245,88,ADV['e']))]
+ST['f']=[chain(entry(95,180),seg((95,180),(119,330),(143,545),(165,650)),seg((165,650),(175,703),(211,704),(221,650)),seg((221,650),(231,588),(198,492),(165,395)),seg((165,395),(133,300),(120,190),(126,80)),seg((126,80),(130,-45),(155,-160),(196,-205)),seg((196,-205),(226,-239),(256,-205),(248,-161)),seg((248,-161),(237,-89),(210,5),(205,72)),exitseg(205,72,ADV['f'])),ln((87,395),(260,410))]
+ST['g']=[chain(entry(),oval_body(),seg((105,180),(163,247),(264,264),(309,205)),seg((309,205),(322,164),(306,108),(308,70)),seg((308,70),(310,-28),(328,-135),(345,-190)),seg((345,-190),(360,-236),(327,-255),(298,-218)),seg((298,-218),(264,-177),(271,-112),(309,-70)),seg((309,-70),(342,-33),(366,28),(390,JOIN_Y)))]
+ST['h']=[chain(entry(92,185),seg((92,185),(118,310),(145,520),(170,635)),seg((170,635),(181,690),(218,698),(230,644)),seg((230,644),(242,584),(211,499),(176,417)),seg((176,417),(140,330),(119,238),(123,166)),seg((123,166),(136,225),(151,276),(164,308)),seg((164,308),(169,229),(172,145),(170,76)),seg((170,76),(185,188),(237,279),(298,282)),seg((298,282),(355,284),(370,215),(360,143)),exitseg(360,143,ADV['h']))]
+ST['i']=[chain(entry(92,192),seg((92,192),(106,150),(110,100),(106,58)),exitseg(106,58,ADV['i'])),[(108,395),(108,395)]]
+ST['j']=[chain(entry(92,192),seg((92,192),(106,150),(109,98),(108,50)),seg((108,50),(109,-36),(118,-145),(137,-205)),seg((137,-205),(153,-250),(188,-250),(203,-211)),seg((203,-211),(219,-167),(207,-109),(180,-73)),seg((180,-73),(155,-39),(155,17),(230,JOIN_Y))),[(108,395),(108,395)]]
+ST['k']=[chain(entry(92,185),seg((92,185),(118,310),(145,520),(170,635)),seg((170,635),(181,690),(218,698),(230,644)),seg((230,644),(242,584),(211,499),(176,417)),seg((176,417),(140,330),(121,239),(125,160)),seg((125,160),(148,209),(190,246),(235,240)),seg((235,240),(272,236),(287,258),(300,289)),seg((300,289),(282,239),(252,193),(215,158)),seg((215,158),(249,131),(286,95),(314,65)),exitseg(314,65,ADV['k']))]
+ST['l']=[chain(entry(92,185),seg((92,185),(118,310),(145,520),(170,635)),seg((170,635),(181,690),(218,698),(230,644)),seg((230,644),(242,584),(211,499),(176,417)),seg((176,417),(140,330),(119,238),(123,156)),seg((123,156),(123,92),(152,51),(196,50)),exitseg(196,50,ADV['l']))]
+ST['n']=[chain(entry(98,180),seg((98,180),(113,226),(126,276),(138,310)),seg((138,310),(143,237),(145,151),(144,77)),seg((144,77),(159,188),(213,277),(278,282)),seg((278,282),(339,286),(357,216),(348,143)),exitseg(348,143,ADV['n']))]
+ST['m']=[chain(entry(98,180),seg((98,180),(113,226),(126,276),(138,310)),seg((138,310),(143,237),(145,151),(144,77)),seg((144,77),(159,188),(212,277),(276,282)),seg((276,282),(337,286),(355,216),(346,143)),seg((346,143),(342,117),(340,94),(339,77)),seg((339,77),(354,188),(408,277),(472,282)),seg((472,282),(534,286),(553,216),(544,143)),exitseg(544,143,ADV['m']))]
+ST['o']=[chain(entry(96,178),seg((96,178),(128,231),(189,261),(249,254)),seg((249,254),(309,247),(332,179),(313,112)),seg((313,112),(294,48),(229,18),(163,37)),seg((163,37),(94,57),(76,132),(105,184)),seg((105,184),(139,245),(229,269),(294,228)),seg((294,228),(318,213),(323,191),(319,171)),seg((319,171),(335,192),(353,193),(357,176)),seg((357,176),(363,157),(344,147),(329,158)),seg((329,158),(322,130),(337,94),(380,JOIN_Y)))]
+ST['p']=[chain(entry(94,180),seg((94,180),(111,232),(124,281),(136,310)),seg((136,310),(143,216),(147,105),(145,10)),seg((145,10),(143,-79),(144,-156),(151,-205)),seg((151,-205),(160,-225),(175,-220),(173,-194)),seg((173,-194),(165,-111),(157,-36),(158,58)),seg((158,58),(174,190),(230,282),(296,282)),seg((296,282),(356,282),(373,213),(362,143)),exitseg(362,143,ADV['p']))]
+ST['q']=[chain(entry(),oval_body(),seg((105,180),(163,247),(264,264),(309,205)),seg((309,205),(323,151),(315,91),(316,40)),seg((316,40),(317,-50),(326,-148),(340,-201)),seg((340,-201),(349,-230),(365,-224),(362,-195)),seg((362,-195),(353,-115),(346,-34),(350,28)),seg((350,28),(354,49),(369,64),(390,JOIN_Y)))]
+ST['r']=[chain(entry(95,184),seg((95,184),(112,228),(126,272),(138,308)),seg((138,308),(149,269),(171,239),(204,232)),seg((204,232),(239,224),(265,235),(274,263)),seg((274,263),(270,207),(245,150),(215,109)),exitseg(215,109,ADV['r']))]
+ST['s']=[chain(entry(91,175),seg((91,175),(111,221),(141,263),(172,274)),seg((172,274),(204,285),(226,267),(220,243)),seg((220,243),(214,220),(183,206),(157,187)),seg((157,187),(123,162),(103,127),(116,97)),seg((116,97),(132,60),(187,54),(221,71)),exitseg(221,71,ADV['s']))]
+ST['t']=[chain(entry(95,180),seg((95,180),(116,285),(137,480),(153,620)),seg((153,620),(159,665),(176,670),(175,622)),seg((175,622),(164,444),(153,239),(156,111)),seg((156,111),(158,66),(195,51),(228,59)),exitseg(228,59,ADV['t'])),ln((88,388),(240,402))]
+ST['u']=[chain(entry(98,180),seg((98,180),(117,229),(127,279),(129,310)),seg((129,310),(130,240),(131,164),(132,97)),seg((132,97),(134,48),(171,23),(210,38)),seg((210,38),(252,54),(275,108),(276,174)),seg((276,174),(278,229),(282,278),(291,310)),seg((291,310),(297,245),(299,171),(300,103)),seg((300,103),(302,62),(337,45),(371,56)),exitseg(371,56,ADV['u']))]
+ST['v']=[chain(entry(95,180),seg((95,180),(111,228),(122,277),(124,307)),seg((124,307),(130,225),(147,132),(181,53)),seg((181,53),(196,19),(222,18),(239,49)),seg((239,49),(269,104),(295,177),(310,242)),seg((310,242),(321,279),(337,289),(345,266)),seg((345,266),(351,245),(338,227),(327,236)),exitseg(327,236,ADV['v']))]
+ST['w']=[chain(entry(95,180),seg((95,180),(111,228),(122,277),(124,307)),seg((124,307),(130,225),(147,132),(181,53)),seg((181,53),(196,19),(222,18),(239,49)),seg((239,49),(259,84),(275,140),(286,205)),seg((286,205),(294,248),(302,282),(310,307)),seg((310,307),(316,225),(333,132),(367,53)),seg((367,53),(382,19),(408,18),(425,49)),seg((425,49),(455,104),(481,177),(496,242)),seg((496,242),(507,279),(523,289),(531,266)),exitseg(531,266,ADV['w']))]
+ST['x']=[chain(entry(90,175),seg((90,175),(128,226),(168,274),(208,300)),seg((208,300),(196,236),(171,172),(145,111)),seg((145,111),(127,69),(133,50),(164,55)),exitseg(164,55,ADV['x'])),chain(seg((88,290),(129,247),(175,188),(215,132)),seg((215,132),(248,86),(278,58),(316,51)))]
+ST['y']=[chain(entry(98,180),seg((98,180),(117,229),(127,279),(129,310)),seg((129,310),(130,240),(131,164),(132,97)),seg((132,97),(134,48),(171,23),(210,38)),seg((210,38),(252,54),(275,108),(276,174)),seg((276,174),(279,228),(286,280),(296,310)),seg((296,310),(304,225),(309,139),(311,64)),seg((311,64),(313,-29),(324,-138),(342,-197)),seg((342,-197),(356,-241),(326,-255),(299,-221)),seg((299,-221),(271,-185),(279,-122),(314,-82)),seg((314,-82),(345,-46),(367,24),(390,JOIN_Y)))]
+ST['z']=[chain(entry(90,170),seg((90,170),(126,226),(170,271),(217,278)),seg((217,278),(256,284),(278,262),(264,236)),seg((264,236),(241,194),(193,145),(150,102)),seg((150,102),(124,77),(124,55),(153,55)),seg((153,55),(205,55),(263,59),(307,71)),seg((307,71),(318,8),(325,-92),(340,-165)),seg((340,-165),(348,-209),(329,-236),(306,-218)),seg((306,-218),(279,-196),(286,-140),(314,-106)),seg((314,-106),(341,-74),(353,7),(360,72)))]
 
 def make_glyph(ch,dotted):
-    pen=TTGlyphPen(None)
-    spacing=(TRACE_SPACING if dotted else MODEL_SPACING)*S
-    radius=(TRACE_RADIUS if dotted else MODEL_RADIUS)*S
-    for stroke in STROKES[ch]:
-        if len(stroke)==2 and stroke[0]==stroke[1]:
-            x,y=stroke[0]; circle(pen,x*S,y*S,radius); continue
-        path=scpath(stroke)
+    pen=TTGlyphPen(None); spacing=(TRACE_SPACING if dotted else MODEL_SPACING)*S; radius=(TRACE_RADIUS if dotted else MODEL_RADIUS)*S
+    for stroke in ST[ch]:
+        if len(stroke)==2 and stroke[0]==stroke[1]: x,y=stroke[0]; circle(pen,x*S,y*S,radius); continue
+        path=[(x*S,y*S) for x,y in stroke]
         for x,y in rs(path,spacing): circle(pen,x,y,radius)
     return pen.glyph()
 
 def rename(font,family):
-    vals={1:family,2:'Regular',3:f'{family};{VERSION}',4:family,5:f'Version {VERSION}',6:family.replace(' ',''),16:family,17:'Regular'}
     table=font['name']
-    for rec in table.names:
-        if rec.nameID in vals:
-            try: rec.string=vals[rec.nameID].encode(rec.getEncoding())
-            except Exception: rec.string=vals[rec.nameID].encode('utf-16-be')
-    for nid,text in vals.items():
-        table.setName(text,nid,3,1,0x409); table.setName(text,nid,1,0,0)
+    vals={1:family,2:'Regular',3:f'{family};{VERSION}',4:family,5:f'Version {VERSION}',6:family.replace(' ',''),16:family,17:'Regular'}
+    for nid,text in vals.items(): table.setName(text,nid,3,1,0x409); table.setName(text,nid,1,0,0)
 
 def build(base,out,family,dotted):
-    font=TTFont(str(base)); glyf=font['glyf']; hmtx=font['hmtx'].metrics
-    cmap={}
+    font=TTFont(str(base)); glyf=font['glyf']; hmtx=font['hmtx'].metrics; cmap={}
     for t in font['cmap'].tables:
         if t.isUnicode(): cmap.update(t.cmap)
-    for ch in 'Caceilmnortu':
+    for ch in 'abcdefghijklmnopqrstuvwxyz':
         name=cmap[ord(ch)]; glyf[name]=make_glyph(ch,dotted); hmtx[name]=(int(ADV[ch]*S),0)
-    font['hhea'].ascent=int(800*S); font['hhea'].descent=int(-220*S)
-    font['OS/2'].sTypoAscender=int(800*S); font['OS/2'].sTypoDescender=int(-220*S)
-    font['OS/2'].usWinAscent=int(820*S); font['OS/2'].usWinDescent=int(240*S)
+    font['hhea'].ascent=int(800*S); font['hhea'].descent=int(-260*S)
+    font['OS/2'].sTypoAscender=int(800*S); font['OS/2'].sTypoDescender=int(-260*S); font['OS/2'].usWinAscent=int(820*S); font['OS/2'].usWinDescent=int(280*S)
     rename(font,family); font.save(str(out))
 
-def preview(base,model,trace,out):
-    im=Image.new('RGB',(2000,1280),'white'); d=ImageDraw.Draw(im)
-    title=ImageFont.truetype(str(base),38); fm=ImageFont.truetype(str(model),180); ft=ImageFont.truetype(str(trace),180); fs=ImageFont.truetype(str(trace),100)
-    d.text((60,25),f'FonteCursiva v{VERSION} — sistema de conexão',font=title,fill='black')
-    d.text((60,100),'Catarina',font=fm,fill='black'); d.text((60,330),'Catarina',font=ft,fill='gray')
-    d.text((60,590),'ae   ce   ei   il   lm   mn   no   or   rt   tu   ua',font=fs,fill='gray')
-    d.text((60,760),'catarina   menina   lua   amor   rotina   numero',font=fs,fill='gray')
-    y0=1110
-    d.line((60,y0,1940,y0),fill='gray',width=1)
-    d.line((60,y0-int(X_HEIGHT*S*0.48),1940,y0-int(X_HEIGHT*S*0.48)),fill='lightgray',width=1)
-    d.text((60,1020),'join: mesma altura e mesmo ponto geométrico entre glifos',font=title,fill='black')
+def make_preview(base,model,trace,out):
+    im=Image.new('RGB',(2400,1700),'white'); d=ImageDraw.Draw(im); title=ImageFont.truetype(str(base),42); fm=ImageFont.truetype(str(model),120); ft=ImageFont.truetype(str(trace),120); fbig=ImageFont.truetype(str(trace),165)
+    d.text((60,35),'FonteCursiva — Redesign v1 · referência manuscrita do vídeo',font=title,fill='black')
+    d.text((60,120),'abcdefghijklmnopqrstuvwxyz',font=fm,fill='black'); d.text((60,300),'abcdefghijklmnopqrstuvwxyz',font=ft,fill='gray')
+    d.text((60,500),'a b c d e f g h i j k l m',font=fbig,fill='gray'); d.text((60,710),'n o p q r s t u v w x y z',font=fbig,fill='gray')
+    y=970
+    for s in ['menina','lua','amor','rotina','numero','flor','rosa','caderno','escrever','caligrafia']:
+        d.text((70,y),s,font=fbig,fill='gray'); y+=120
     im.save(out)
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('--base-font',type=Path,required=True); ap.add_argument('--output-dir',type=Path,default=Path('dist')); a=ap.parse_args(); a.output_dir.mkdir(parents=True,exist_ok=True)
-    model=a.output_dir/f'FonteCursivaModel-v{VERSION}.ttf'; trace=a.output_dir/f'FonteCursivaTrace-v{VERSION}.ttf'; prev=a.output_dir/f'preview-v{VERSION}.png'
-    build(a.base_font,model,'FonteCursiva Model 040',False); build(a.base_font,trace,'FonteCursiva Trace 040',True); preview(a.base_font,model,trace,prev)
-    print(model); print(trace); print(prev)
+    base=Path('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'); outdir=Path('dist'); outdir.mkdir(parents=True,exist_ok=True)
+    model=outdir/'FonteCursivaEscolarModel-v1.0.0.ttf'; trace=outdir/'FonteCursivaEscolarTrace-v1.0.0.ttf'; preview=outdir/'preview-redesign-v1.png'
+    build(base,model,'FonteCursiva Escolar Model v1',False); build(base,trace,'FonteCursiva Escolar Trace v1',True); make_preview(base,model,trace,preview)
 if __name__=='__main__': main()
