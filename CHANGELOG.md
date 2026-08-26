@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.3.2 — refinamento da base cursiva
+
+- `t` com retorno inferior mais fechado e saída mais suave;
+- `r` com saída mais longa para melhorar a transição para `i`;
+- `i` com subida mais alta antes do retorno;
+- `n` com arco um pouco mais aberto;
+- leve redução do diâmetro dos pontos da variante Trace;
+- mantido o sistema geométrico comum de conexão entre glifos;
+- validada em teste visual no Microsoft Word em 48 pt e 72 pt.
+
 ## v0.3.0 — sistema cursivo conectado
 
 - referência visual consolidada em uma cursiva infantil fluida, leve e contínua;
