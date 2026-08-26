@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""FonteCursiva v0.3.0 — connected cursive system prototype.
+"""FonteCursiva v0.3.2 — connected cursive system prototype.
 
 Design rule: every connected glyph begins at JOIN_IN=(0, JOIN_Y) and ends at
 JOIN_OUT=(advance, JOIN_Y). This makes the baseline connector geometrically
@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 UPM=2048
 S=UPM/1000.0
-VERSION='0.3.0'
+VERSION='0.3.2'
 BASELINE=0
 X_HEIGHT=285
 ASCENDER=650
@@ -22,7 +22,7 @@ CAP_HEIGHT=700
 DESCENDER=-210
 JOIN_Y=72
 TRACE_SPACING=76
-TRACE_RADIUS=10.5
+TRACE_RADIUS=10.0
 MODEL_SPACING=9
 MODEL_RADIUS=22
 
@@ -44,6 +44,7 @@ def chain(*segments):
     return out
 
 def ln(a,b,n=24): return [(a[0]+(b[0]-a[0])*i/n,a[1]+(b[1]-a[1])*i/n) for i in range(n+1)]
+
 def scpath(path): return [(x*S,y*S) for x,y in path]
 
 def rs(path,spacing):
@@ -66,14 +67,75 @@ def circle(pen,x,y,r,steps=18):
     for p in ps[1:]: pen.lineTo(p)
     pen.closePath()
 
+# One continuous main stroke per lowercase glyph. Separate strokes only for dot/crossbar.
+# All main strokes start at x=0,y=JOIN_Y and terminate exactly at x=advance,y=JOIN_Y.
 STROKES={}
-STROKES['c']=[chain(seg((0,JOIN_Y),(38,86),(75,125),(102,170)),seg((102,170),(137,232),(198,260),(258,248)),seg((258,248),(205,267),(130,247),(86,190)),seg((86,190),(43,134),(48,60),(116,31)),seg((116,31),(195,0),(274,26),(350,JOIN_Y)))]
-STROKES['a']=[chain(seg((0,JOIN_Y),(35,88),(70,122),(98,165)),seg((98,165),(132,225),(193,260),(255,248)),seg((255,248),(319,235),(340,169),(318,103)),seg((318,103),(294,37),(222,8),(151,34)),seg((151,34),(86,59),(76,149),(120,204)),seg((120,204),(170,263),(266,263),(307,194)),seg((307,194),(326,160),(307,108),(319,78)),seg((319,78),(338,47),(370,48),(405,JOIN_Y)))]
-STROKES['t']=[chain(seg((0,JOIN_Y),(40,90),(75,127),(102,173)),seg((102,173),(122,280),(145,490),(163,635)),seg((163,635),(169,682),(190,684),(191,627)),seg((191,627),(179,445),(163,231),(166,103)),seg((166,103),(169,53),(211,43),(248,61)),seg((248,61),(267,70),(282,74),(300,JOIN_Y))),ln((92,392),(263,409))]
-STROKES['r']=[chain(seg((0,JOIN_Y),(38,90),(72,126),(99,170)),seg((99,170),(116,224),(129,282),(143,320)),seg((143,320),(153,264),(180,227),(224,220)),seg((224,220),(264,214),(295,237),(303,274)),seg((303,274),(293,210),(257,138),(220,92)),seg((220,92),(249,57),(298,54),(350,JOIN_Y)))]
-STROKES['i']=[chain(seg((0,JOIN_Y),(36,88),(68,121),(94,162)),seg((94,162),(107,126),(111,88),(107,57)),seg((107,57),(120,36),(157,48),(185,61)),seg((185,61),(199,68),(211,72),(225,JOIN_Y))),[(110,397),(110,397)]]
-STROKES['n']=[chain(seg((0,JOIN_Y),(37,89),(72,126),(100,171)),seg((100,171),(114,222),(126,278),(138,313)),seg((138,313),(144,234),(146,145),(145,71)),seg((145,71),(154,187),(210,279),(277,282)),seg((277,282),(343,285),(361,210),(350,132)),seg((350,132),(344,87),(372,58),(420,JOIN_Y)))]
-STROKES['C']=[chain(seg((0,JOIN_Y),(48,79),(85,134),(105,235)),seg((105,235),(123,505),(271,702),(447,690)),seg((447,690),(514,686),(550,644),(530,598)),seg((530,598),(506,559),(462,554),(432,580)),seg((432,580),(403,607),(405,650),(428,675))),chain(seg((105,235),(92,110),(156,16),(284,0)),seg((284,0),(398,-7),(485,28),(560,JOIN_Y)))]
+
+STROKES['c']=[chain(
+    seg((0,JOIN_Y),(38,86),(75,125),(102,170)),
+    seg((102,170),(137,232),(198,260),(258,248)),
+    seg((258,248),(205,267),(130,247),(86,190)),
+    seg((86,190),(43,134),(48,60),(116,31)),
+    seg((116,31),(195,0),(274,26),(350,JOIN_Y)),
+)]
+
+STROKES['a']=[chain(
+    seg((0,JOIN_Y),(35,88),(70,122),(98,165)),
+    seg((98,165),(132,225),(193,260),(255,248)),
+    seg((255,248),(319,235),(340,169),(318,103)),
+    seg((318,103),(294,37),(222,8),(151,34)),
+    seg((151,34),(86,59),(76,149),(120,204)),
+    seg((120,204),(170,263),(266,263),(307,194)),
+    seg((307,194),(326,160),(307,108),(319,78)),
+    seg((319,78),(338,47),(370,48),(405,JOIN_Y)),
+)]
+
+STROKES['t']=[chain(
+    seg((0,JOIN_Y),(40,90),(75,127),(102,173)),
+    seg((102,173),(122,280),(145,490),(163,635)),
+    seg((163,635),(169,682),(190,684),(191,627)),
+    seg((191,627),(180,447),(166,238),(168,112)),
+    seg((168,112),(171,88),(192,72),(216,69)),
+    seg((216,69),(239,67),(265,69),(300,JOIN_Y)),
+), ln((102,392),(254,405))]
+
+STROKES['r']=[chain(
+    seg((0,JOIN_Y),(38,90),(72,128),(100,174)),
+    seg((100,174),(118,228),(132,281),(145,314)),
+    seg((145,314),(158,268),(184,235),(220,228)),
+    seg((220,228),(256,221),(282,232),(294,258)),
+    seg((294,258),(289,206),(261,151),(229,111)),
+    seg((229,111),(248,84),(278,69),(311,70)),
+    seg((311,70),(326,70),(338,72),(350,JOIN_Y)),
+)]
+
+STROKES['i']=[chain(
+    seg((0,JOIN_Y),(37,90),(70,132),(98,194)),
+    seg((98,194),(111,152),(115,101),(110,61)),
+    seg((110,61),(123,39),(153,45),(181,59)),
+    seg((181,59),(196,67),(210,71),(225,JOIN_Y)),
+), [(111,401),(111,401)]]
+
+STROKES['n']=[chain(
+    seg((0,JOIN_Y),(37,90),(72,128),(100,174)),
+    seg((100,174),(114,226),(128,281),(140,313)),
+    seg((140,313),(145,236),(147,149),(146,73)),
+    seg((146,73),(160,198),(222,288),(292,286)),
+    seg((292,286),(356,284),(371,214),(359,139)),
+    seg((359,139),(351,94),(374,65),(420,JOIN_Y)),
+)]
+
+# Capital C has a continuous exit at the same connection height.
+STROKES['C']=[chain(
+    seg((0,JOIN_Y),(48,79),(85,134),(105,235)),
+    seg((105,235),(123,505),(271,702),(447,690)),
+    seg((447,690),(514,686),(550,644),(530,598)),
+    seg((530,598),(506,559),(462,554),(432,580)),
+    seg((432,580),(403,607),(405,650),(428,675)),
+), chain(
+    seg((105,235),(92,110),(156,16),(284,0)),
+    seg((284,0),(398,-7),(485,28),(560,JOIN_Y)),
+)]
 
 def make_glyph(ch,dotted):
     pen=TTGlyphPen(None)
@@ -115,12 +177,15 @@ def preview(base,model,trace,out):
     d.text((60,100),'Catarina',font=fm,fill='black'); d.text((60,330),'Catarina',font=ft,fill='gray')
     d.text((60,590),'Ca   at   ta   ar   ri   in   na',font=fs,fill='gray')
     d.text((60,760),'catarina   Catarina   cat   rat   rain',font=fs,fill='gray')
+    y0=1110
+    d.line((60,y0,1940,y0),fill='gray',width=1)
+    d.line((60,y0-int(X_HEIGHT*S*0.48),1940,y0-int(X_HEIGHT*S*0.48)),fill='lightgray',width=1)
     d.text((60,1020),'join: mesma altura e mesmo ponto geométrico entre glifos',font=title,fill='black')
     im.save(out)
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--base-font',type=Path,required=True); ap.add_argument('--output-dir',type=Path,default=Path('dist')); a=ap.parse_args(); a.output_dir.mkdir(parents=True,exist_ok=True)
     model=a.output_dir/f'FonteCursivaModel-v{VERSION}.ttf'; trace=a.output_dir/f'FonteCursivaTrace-v{VERSION}.ttf'; prev=a.output_dir/f'preview-v{VERSION}.png'
-    build(a.base_font,model,'FonteCursiva Model 030',False); build(a.base_font,trace,'FonteCursiva Trace 030',True); preview(a.base_font,model,trace,prev)
+    build(a.base_font,model,'FonteCursiva Model 032',False); build(a.base_font,trace,'FonteCursiva Trace 032',True); preview(a.base_font,model,trace,prev)
     print(model); print(trace); print(prev)
 if __name__=='__main__': main()
