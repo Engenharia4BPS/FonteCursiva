@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.0 — primeiro núcleo minúsculo
+
+- expansão do conjunto cursivo para `a c e i l m n o r t u`;
+- novos glifos `e`, `l`, `m`, `o` e `u` construídos sobre o mesmo sistema geométrico de conexão da v0.3.2;
+- preservadas as métricas comuns de baseline, x-height, ascender e altura de junção;
+- `l` introduz a primeira forma ascendente com laço;
+- `m` deriva diretamente da gramática de arcos do `n`;
+- `o` e `e` compartilham a família de formas arredondadas iniciada em `a` e `c`;
+- `u` introduz a família de movimentos baixos repetidos que será reutilizada em outras letras;
+- QA ampliado para pares `ae`, `ce`, `ei`, `il`, `lm`, `mn`, `no`, `or`, `rt`, `tu`, `ua` e palavras curtas formadas apenas pelo núcleo atual.
+
 ## v0.3.2 — refinamento da base cursiva
 
 - `t` com retorno inferior mais fechado e saída mais suave;
