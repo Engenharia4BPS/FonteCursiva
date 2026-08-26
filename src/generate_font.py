@@ -1,258 +1,126 @@
 #!/usr/bin/env python3
-"""Build experimental FonteCursiva Model/Trace TrueType fonts.
+"""FonteCursiva v0.3.0 — connected cursive system prototype.
 
-Current prototype glyphs: C, c, a, t, r, i, n.
-The remaining glyphs come from a supplied base TrueType font so that the
-resulting TTF keeps a complete structure compatible with Microsoft Word.
+Design rule: every connected glyph begins at JOIN_IN=(0, JOIN_Y) and ends at
+JOIN_OUT=(advance, JOIN_Y). This makes the baseline connector geometrically
+continuous across glyph boundaries instead of relying on visual overlap.
 """
-
 from __future__ import annotations
-
-import argparse
-import math
+import argparse, math
 from pathlib import Path
-
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
 from PIL import Image, ImageDraw, ImageFont
 
-UPM = 2048
-SCALE = UPM / 1000.0
-VERSION = "0.2.3"
+UPM=2048
+S=UPM/1000.0
+VERSION='0.3.0'
+BASELINE=0
+X_HEIGHT=285
+ASCENDER=650
+CAP_HEIGHT=700
+DESCENDER=-210
+JOIN_Y=72
+TRACE_SPACING=76
+TRACE_RADIUS=10.5
+MODEL_SPACING=9
+MODEL_RADIUS=22
 
+ADV={'C':560,'c':350,'a':405,'t':300,'r':350,'i':225,'n':420}
 
-def bezier(p0, p1, p2, p3, n=90):
-    pts = []
-    for i in range(n + 1):
-        t = i / n
-        u = 1 - t
-        pts.append((
-            u**3 * p0[0] + 3*u*u*t*p1[0] + 3*u*t*t*p2[0] + t**3*p3[0],
-            u**3 * p0[1] + 3*u*u*t*p1[1] + 3*u*t*t*p2[1] + t**3*p3[1],
-        ))
-    return pts
-
-
-def line(p0, p1, n=30):
-    return [
-        (p0[0] + (p1[0]-p0[0])*i/n, p0[1] + (p1[1]-p0[1])*i/n)
-        for i in range(n + 1)
-    ]
-
-
-def resample(poly, spacing):
-    if not poly:
-        return []
-    out = [poly[0]]
-    remaining = spacing
-    prev = poly[0]
-    for cur in poly[1:]:
-        while True:
-            dx, dy = cur[0]-prev[0], cur[1]-prev[1]
-            seg = math.hypot(dx, dy)
-            if seg < 1e-9:
-                break
-            if seg < remaining:
-                remaining -= seg
-                prev = cur
-                break
-            r = remaining / seg
-            prev = (prev[0] + dx*r, prev[1] + dy*r)
-            out.append(prev)
-            remaining = spacing
+def cubic(p0,p1,p2,p3,n=55):
+    out=[]
+    for i in range(n+1):
+        t=i/n;u=1-t
+        out.append((u**3*p0[0]+3*u*u*t*p1[0]+3*u*t*t*p2[0]+t**3*p3[0],
+                    u**3*p0[1]+3*u*u*t*p1[1]+3*u*t*t*p2[1]+t**3*p3[1]))
     return out
 
+def seg(a,b,c,d): return cubic(a,b,c,d)
+def chain(*segments):
+    out=[]
+    for s in segments:
+        out.extend(s if not out else s[1:])
+    return out
 
-def add_circle(pen, cx, cy, radius, steps=20):
-    pts = [
-        (
-            cx + math.cos(2*math.pi*i/steps)*radius,
-            cy + math.sin(2*math.pi*i/steps)*radius,
-        )
-        for i in range(steps)
-    ]
-    pen.moveTo(pts[0])
-    for pt in pts[1:]:
-        pen.lineTo(pt)
+def ln(a,b,n=24): return [(a[0]+(b[0]-a[0])*i/n,a[1]+(b[1]-a[1])*i/n) for i in range(n+1)]
+def scpath(path): return [(x*S,y*S) for x,y in path]
+
+def rs(path,spacing):
+    if not path: return []
+    pts=[path[0]]; remain=spacing; prev=path[0]
+    for cur in path[1:]:
+        while True:
+            dx,dy=cur[0]-prev[0],cur[1]-prev[1]; d=math.hypot(dx,dy)
+            if d<1e-9: break
+            if d<remain:
+                remain-=d; prev=cur; break
+            q=remain/d; prev=(prev[0]+dx*q,prev[1]+dy*q); pts.append(prev); remain=spacing
+    if math.hypot(pts[-1][0]-path[-1][0],pts[-1][1]-path[-1][1]) > spacing*0.42:
+        pts.append(path[-1])
+    return pts
+
+def circle(pen,x,y,r,steps=18):
+    ps=[(x+math.cos(2*math.pi*i/steps)*r,y+math.sin(2*math.pi*i/steps)*r) for i in range(steps)]
+    pen.moveTo(ps[0])
+    for p in ps[1:]: pen.lineTo(p)
     pen.closePath()
 
+STROKES={}
+STROKES['c']=[chain(seg((0,JOIN_Y),(38,86),(75,125),(102,170)),seg((102,170),(137,232),(198,260),(258,248)),seg((258,248),(205,267),(130,247),(86,190)),seg((86,190),(43,134),(48,60),(116,31)),seg((116,31),(195,0),(274,26),(350,JOIN_Y)))]
+STROKES['a']=[chain(seg((0,JOIN_Y),(35,88),(70,122),(98,165)),seg((98,165),(132,225),(193,260),(255,248)),seg((255,248),(319,235),(340,169),(318,103)),seg((318,103),(294,37),(222,8),(151,34)),seg((151,34),(86,59),(76,149),(120,204)),seg((120,204),(170,263),(266,263),(307,194)),seg((307,194),(326,160),(307,108),(319,78)),seg((319,78),(338,47),(370,48),(405,JOIN_Y)))]
+STROKES['t']=[chain(seg((0,JOIN_Y),(40,90),(75,127),(102,173)),seg((102,173),(122,280),(145,490),(163,635)),seg((163,635),(169,682),(190,684),(191,627)),seg((191,627),(179,445),(163,231),(166,103)),seg((166,103),(169,53),(211,43),(248,61)),seg((248,61),(267,70),(282,74),(300,JOIN_Y))),ln((92,392),(263,409))]
+STROKES['r']=[chain(seg((0,JOIN_Y),(38,90),(72,126),(99,170)),seg((99,170),(116,224),(129,282),(143,320)),seg((143,320),(153,264),(180,227),(224,220)),seg((224,220),(264,214),(295,237),(303,274)),seg((303,274),(293,210),(257,138),(220,92)),seg((220,92),(249,57),(298,54),(350,JOIN_Y)))]
+STROKES['i']=[chain(seg((0,JOIN_Y),(36,88),(68,121),(94,162)),seg((94,162),(107,126),(111,88),(107,57)),seg((107,57),(120,36),(157,48),(185,61)),seg((185,61),(199,68),(211,72),(225,JOIN_Y))),[(110,397),(110,397)]]
+STROKES['n']=[chain(seg((0,JOIN_Y),(37,89),(72,126),(100,171)),seg((100,171),(114,222),(126,278),(138,313)),seg((138,313),(144,234),(146,145),(145,71)),seg((145,71),(154,187),(210,279),(277,282)),seg((277,282),(343,285),(361,210),(350,132)),seg((350,132),(344,87),(372,58),(420,JOIN_Y)))]
+STROKES['C']=[chain(seg((0,JOIN_Y),(48,79),(85,134),(105,235)),seg((105,235),(123,505),(271,702),(447,690)),seg((447,690),(514,686),(550,644),(530,598)),seg((530,598),(506,559),(462,554),(432,580)),seg((432,580),(403,607),(405,650),(428,675))),chain(seg((105,235),(92,110),(156,16),(284,0)),seg((284,0),(398,-7),(485,28),(560,JOIN_Y)))]
 
-def sc(pt):
-    return (pt[0] * SCALE, pt[1] * SCALE)
-
-
-def B(a, b, c, d, n=90):
-    return [sc(p) for p in bezier(a, b, c, d, n)]
-
-
-def L(a, b, n=30):
-    return [sc(p) for p in line(a, b, n)]
-
-
-PATHS = {
-    "C": [
-        B((25,0),(70,15),(100,100),(110,230)),
-        B((110,230),(125,500),(270,700),(445,690)),
-        B((445,690),(520,685),(555,635),(530,590)),
-        B((530,590),(500,545),(455,550),(430,575)),
-        B((110,230),(95,100),(155,10),(280,-5)),
-        B((280,-5),(390,-8),(480,35),(550,90)),
-    ],
-    "c": [
-        B((-25,55),(15,70),(55,105),(95,155)),
-        B((95,155),(125,220),(180,255),(245,255)),
-        B((245,255),(175,265),(105,235),(70,170)),
-        B((70,170),(35,105),(60,35),(135,22)),
-        B((135,22),(215,8),(285,45),(345,105)),
-    ],
-    "a": [
-        B((-25,55),(20,75),(65,115),(100,165)),
-        B((100,165),(135,240),(205,270),(270,250)),
-        B((270,250),(335,225),(345,145),(315,85)),
-        B((315,85),(280,20),(195,5),(135,45)),
-        B((135,45),(75,85),(82,195),(155,225)),
-        B((155,225),(230,255),(300,205),(305,105)),
-        B((305,105),(315,65),(355,70),(420,115)),
-    ],
-    "t": [
-        B((-25,55),(20,75),(65,115),(100,165)),
-        B((100,165),(125,285),(145,470),(160,635)),
-        B((160,635),(165,675),(185,680),(185,625)),
-        B((185,625),(170,430),(160,230),(165,95)),
-        B((165,95),(175,50),(220,60),(285,110)),
-        L((95,385),(255,405)),
-    ],
-    "r": [
-        B((-25,55),(20,75),(65,115),(100,165)),
-        B((100,165),(115,225),(130,280),(140,320)),
-        B((140,320),(150,260),(185,220),(225,220)),
-        B((225,220),(270,220),(300,250),(305,290)),
-        B((305,290),(295,205),(255,130),(220,85)),
-        B((220,85),(250,50),(300,65),(365,115)),
-    ],
-    "i": [
-        B((-25,55),(20,75),(65,115),(100,165)),
-        B((100,165),(112,130),(115,90),(110,55)),
-        B((110,55),(125,35),(165,60),(220,110)),
-    ],
-    "n": [
-        B((-25,55),(20,75),(65,115),(100,165)),
-        B((100,165),(112,225),(125,280),(135,315)),
-        B((135,315),(140,235),(145,145),(145,65)),
-        B((145,65),(155,195),(215,285),(280,285)),
-        B((280,285),(345,285),(360,210),(350,125)),
-        B((350,125),(345,80),(380,70),(430,115)),
-    ],
-}
-
-ADVANCE_1000 = {
-    "C": 545,
-    "c": 345,
-    "a": 405,
-    "t": 285,
-    "r": 355,
-    "i": 220,
-    "n": 420,
-}
-
-
-def make_glyph(ch: str, dotted: bool):
-    pen = TTGlyphPen(None)
-    spacing = (82 if dotted else 11) * SCALE
-    radius = (11 if dotted else 24) * SCALE
-    for path in PATHS[ch]:
-        for x, y in resample(path, spacing):
-            add_circle(pen, x, y, radius)
-    if ch == "i":
-        add_circle(pen, 112*SCALE, 400*SCALE, radius)
+def make_glyph(ch,dotted):
+    pen=TTGlyphPen(None)
+    spacing=(TRACE_SPACING if dotted else MODEL_SPACING)*S
+    radius=(TRACE_RADIUS if dotted else MODEL_RADIUS)*S
+    for stroke in STROKES[ch]:
+        if len(stroke)==2 and stroke[0]==stroke[1]:
+            x,y=stroke[0]; circle(pen,x*S,y*S,radius); continue
+        path=scpath(stroke)
+        for x,y in rs(path,spacing): circle(pen,x,y,radius)
     return pen.glyph()
 
-
-def rename_font(font: TTFont, family: str):
-    values = {
-        1: family,
-        2: "Regular",
-        3: f"{family};{VERSION}",
-        4: family,
-        5: f"Version {VERSION}",
-        6: family.replace(" ", ""),
-        16: family,
-        17: "Regular",
-    }
-    table = font["name"]
+def rename(font,family):
+    vals={1:family,2:'Regular',3:f'{family};{VERSION}',4:family,5:f'Version {VERSION}',6:family.replace(' ',''),16:family,17:'Regular'}
+    table=font['name']
     for rec in table.names:
-        if rec.nameID in values:
-            try:
-                rec.string = values[rec.nameID].encode(rec.getEncoding())
-            except Exception:
-                rec.string = values[rec.nameID].encode("utf-16-be")
-    for nid, text in values.items():
-        table.setName(text, nid, 3, 1, 0x409)
-        table.setName(text, nid, 1, 0, 0)
+        if rec.nameID in vals:
+            try: rec.string=vals[rec.nameID].encode(rec.getEncoding())
+            except Exception: rec.string=vals[rec.nameID].encode('utf-16-be')
+    for nid,text in vals.items():
+        table.setName(text,nid,3,1,0x409); table.setName(text,nid,1,0,0)
 
+def build(base,out,family,dotted):
+    font=TTFont(str(base)); glyf=font['glyf']; hmtx=font['hmtx'].metrics
+    cmap={}
+    for t in font['cmap'].tables:
+        if t.isUnicode(): cmap.update(t.cmap)
+    for ch in 'Ccatrin':
+        name=cmap[ord(ch)]; glyf[name]=make_glyph(ch,dotted); hmtx[name]=(int(ADV[ch]*S),0)
+    font['hhea'].ascent=int(800*S); font['hhea'].descent=int(-220*S)
+    font['OS/2'].sTypoAscender=int(800*S); font['OS/2'].sTypoDescender=int(-220*S)
+    font['OS/2'].usWinAscent=int(820*S); font['OS/2'].usWinDescent=int(240*S)
+    rename(font,family); font.save(str(out))
 
-def build_font(base_font: Path, output: Path, family: str, dotted: bool):
-    font = TTFont(str(base_font))
-    glyph_table = font["glyf"]
-    metrics = font["hmtx"].metrics
-
-    cmap = {}
-    for table in font["cmap"].tables:
-        if table.isUnicode():
-            cmap.update(table.cmap)
-
-    for ch in "Ccatrin":
-        glyph_name = cmap[ord(ch)]
-        glyph_table[glyph_name] = make_glyph(ch, dotted)
-        metrics[glyph_name] = (int(ADVANCE_1000[ch]*SCALE), 0)
-
-    font["hhea"].ascent = int(800*SCALE)
-    font["hhea"].descent = int(-220*SCALE)
-    font["OS/2"].sTypoAscender = int(800*SCALE)
-    font["OS/2"].sTypoDescender = int(-220*SCALE)
-    font["OS/2"].usWinAscent = int(820*SCALE)
-    font["OS/2"].usWinDescent = int(240*SCALE)
-
-    rename_font(font, family)
-    font.save(str(output))
-
-
-def make_preview(base_font: Path, model: Path, trace: Path, output: Path):
-    image = Image.new("RGB", (1800, 1000), "white")
-    draw = ImageDraw.Draw(image)
-    title = ImageFont.truetype(str(base_font), 42)
-    solid = ImageFont.truetype(str(model), 190)
-    dotted = ImageFont.truetype(str(trace), 190)
-    small = ImageFont.truetype(str(trace), 90)
-
-    draw.text((70,30), f"FonteCursiva v{VERSION} — protótipo", font=title, fill="black")
-    draw.text((70,120), "Catarina", font=solid, fill="black")
-    draw.text((70,390), "Catarina", font=dotted, fill="gray")
-    draw.text((70,680), "Catarina   catarina   ca   Cat", font=small, fill="gray")
-    image.save(output)
-
+def preview(base,model,trace,out):
+    im=Image.new('RGB',(2000,1280),'white'); d=ImageDraw.Draw(im)
+    title=ImageFont.truetype(str(base),38); fm=ImageFont.truetype(str(model),180); ft=ImageFont.truetype(str(trace),180); fs=ImageFont.truetype(str(trace),100)
+    d.text((60,25),f'FonteCursiva v{VERSION} — sistema de conexão',font=title,fill='black')
+    d.text((60,100),'Catarina',font=fm,fill='black'); d.text((60,330),'Catarina',font=ft,fill='gray')
+    d.text((60,590),'Ca   at   ta   ar   ri   in   na',font=fs,fill='gray')
+    d.text((60,760),'catarina   Catarina   cat   rat   rain',font=fs,fill='gray')
+    d.text((60,1020),'join: mesma altura e mesmo ponto geométrico entre glifos',font=title,fill='black')
+    im.save(out)
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--base-font", required=True, type=Path,
-                        help="Path to a complete TrueType base font (for example DejaVuSans.ttf)")
-    parser.add_argument("--output-dir", default=Path("dist"), type=Path)
-    args = parser.parse_args()
-
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-
-    model = args.output_dir / "FonteCursivaModel-v0.2.3.ttf"
-    trace = args.output_dir / "FonteCursivaTrace-v0.2.3.ttf"
-    preview = args.output_dir / "preview-v0.2.3.png"
-
-    build_font(args.base_font, model, "FonteCursiva Model 023", dotted=False)
-    build_font(args.base_font, trace, "FonteCursiva Trace 023", dotted=True)
-    make_preview(args.base_font, model, trace, preview)
-
-    print(model)
-    print(trace)
-    print(preview)
-
-
-if __name__ == "__main__":
-    main()
+    ap=argparse.ArgumentParser(); ap.add_argument('--base-font',type=Path,required=True); ap.add_argument('--output-dir',type=Path,default=Path('dist')); a=ap.parse_args(); a.output_dir.mkdir(parents=True,exist_ok=True)
+    model=a.output_dir/f'FonteCursivaModel-v{VERSION}.ttf'; trace=a.output_dir/f'FonteCursivaTrace-v{VERSION}.ttf'; prev=a.output_dir/f'preview-v{VERSION}.png'
+    build(a.base_font,model,'FonteCursiva Model 030',False); build(a.base_font,trace,'FonteCursiva Trace 030',True); preview(a.base_font,model,trace,prev)
+    print(model); print(trace); print(prev)
+if __name__=='__main__': main()
