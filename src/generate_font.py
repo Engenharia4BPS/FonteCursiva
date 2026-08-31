@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""FonteCursiva v0.4.0 — lowercase core expansion.
+"""FonteCursiva v0.4.1 — lowercase p refinement.
 
 Design rule: every connected glyph begins at JOIN_IN=(0, JOIN_Y) and ends at
 JOIN_OUT=(advance, JOIN_Y). This makes the baseline connector geometrically
 continuous across glyph boundaries instead of relying on visual overlap.
+
+v0.4.1 changes only the lowercase `p`: it keeps the long descender but adds a
+clearly readable lower bowl/return stroke so the glyph no longer resembles a
+lowercase `n` with an extended stem.
 """
 from __future__ import annotations
 import argparse, math
@@ -14,7 +18,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 UPM=2048
 S=UPM/1000.0
-VERSION='0.4.0'
+VERSION='0.4.1'
 BASELINE=0
 X_HEIGHT=285
 ASCENDER=650
@@ -26,7 +30,7 @@ TRACE_RADIUS=10.0
 MODEL_SPACING=9
 MODEL_RADIUS=22
 
-ADV={'C':560,'a':405,'c':350,'e':350,'i':225,'l':250,'m':610,'n':420,'o':390,'r':350,'t':300,'u':420}
+ADV={'C':560,'a':405,'c':350,'e':350,'i':225,'l':250,'m':610,'n':420,'o':390,'p':390,'r':350,'t':300,'u':420}
 
 def cubic(p0,p1,p2,p3,n=55):
     out=[]
@@ -164,6 +168,29 @@ STROKES['o']=[chain(
     seg((338,142),(335,101),(352,81),(390,JOIN_Y)),
 )]
 
+# Lowercase p — surgical v0.4.1 correction.
+# The entry and exit remain on JOIN_Y. The long descender is preserved, but
+# after returning to x-height the stroke now makes a visible lower bowl before
+# flowing out to the next glyph. This is the red-marked correction discussed
+# during visual review: p must not read as an n with a long leg.
+STROKES['p']=[chain(
+    seg((0,JOIN_Y),(36,89),(71,129),(101,177)),
+    seg((101,177),(122,222),(136,272),(145,313)),
+    # descend on the main stem
+    seg((145,313),(143,170),(142,-70),(142,-205)),
+    seg((142,-205),(142,-235),(158,-238),(159,-202)),
+    # return on the stem to the bowl junction
+    seg((159,-202),(160,-70),(159,105),(158,205)),
+    # upper/right shoulder of the bowl
+    seg((158,205),(183,271),(244,292),(302,270)),
+    seg((302,270),(353,250),(367,195),(350,145)),
+    # lower return/bowl: the new distinguishing p feature
+    seg((350,145),(334,95),(294,53),(242,43)),
+    seg((242,43),(199,35),(174,55),(168,88)),
+    seg((168,88),(177,63),(199,49),(227,50)),
+    seg((227,50),(289,51),(336,72),(390,JOIN_Y)),
+)]
+
 STROKES['u']=[chain(
     seg((0,JOIN_Y),(37,90),(72,129),(100,174)),
     seg((100,174),(118,221),(128,274),(129,313)),
@@ -213,29 +240,31 @@ def build(base,out,family,dotted):
     cmap={}
     for t in font['cmap'].tables:
         if t.isUnicode(): cmap.update(t.cmap)
-    for ch in 'Caceilmnortu':
+    for ch in 'Caceilmnoprtu':
         name=cmap[ord(ch)]; glyf[name]=make_glyph(ch,dotted); hmtx[name]=(int(ADV[ch]*S),0)
-    font['hhea'].ascent=int(800*S); font['hhea'].descent=int(-220*S)
-    font['OS/2'].sTypoAscender=int(800*S); font['OS/2'].sTypoDescender=int(-220*S)
-    font['OS/2'].usWinAscent=int(820*S); font['OS/2'].usWinDescent=int(240*S)
+    font['hhea'].ascent=int(800*S); font['hhea'].descent=int(-260*S)
+    font['OS/2'].sTypoAscender=int(800*S); font['OS/2'].sTypoDescender=int(-260*S)
+    font['OS/2'].usWinAscent=int(820*S); font['OS/2'].usWinDescent=int(280*S)
     rename(font,family); font.save(str(out))
 
 def preview(base,model,trace,out):
-    im=Image.new('RGB',(2000,1280),'white'); d=ImageDraw.Draw(im)
+    im=Image.new('RGB',(2000,1380),'white'); d=ImageDraw.Draw(im)
     title=ImageFont.truetype(str(base),38); fm=ImageFont.truetype(str(model),180); ft=ImageFont.truetype(str(trace),180); fs=ImageFont.truetype(str(trace),100)
-    d.text((60,25),f'FonteCursiva v{VERSION} — sistema de conexão',font=title,fill='black')
-    d.text((60,100),'Catarina',font=fm,fill='black'); d.text((60,330),'Catarina',font=ft,fill='gray')
-    d.text((60,590),'ae   ce   ei   il   lm   mn   no   or   rt   tu   ua',font=fs,fill='gray')
-    d.text((60,760),'catarina   menina   lua   amor   rotina   numero',font=fs,fill='gray')
-    y0=1110
+    d.text((60,25),f'FonteCursiva v{VERSION} — lowercase p refinement',font=title,fill='black')
+    d.text((60,100),'p   p   p   p',font=fm,fill='black')
+    d.text((60,330),'p   p   p   p',font=ft,fill='gray')
+    d.text((60,590),'pa   pe   pi   po   pu   ap   ep   ip   op   up',font=fs,fill='gray')
+    d.text((60,760),'papa   papel   pipa   mapa   tempo   campo',font=fs,fill='gray')
+    d.text((60,940),'comparison:   n   p   n   p',font=fs,fill='gray')
+    y0=1200
     d.line((60,y0,1940,y0),fill='gray',width=1)
     d.line((60,y0-int(X_HEIGHT*S*0.48),1940,y0-int(X_HEIGHT*S*0.48)),fill='lightgray',width=1)
-    d.text((60,1020),'join: mesma altura e mesmo ponto geométrico entre glifos',font=title,fill='black')
+    d.text((60,1270),'focus: readable p bowl + preserved cursive joins',font=title,fill='black')
     im.save(out)
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--base-font',type=Path,required=True); ap.add_argument('--output-dir',type=Path,default=Path('dist')); a=ap.parse_args(); a.output_dir.mkdir(parents=True,exist_ok=True)
     model=a.output_dir/f'FonteCursivaModel-v{VERSION}.ttf'; trace=a.output_dir/f'FonteCursivaTrace-v{VERSION}.ttf'; prev=a.output_dir/f'preview-v{VERSION}.png'
-    build(a.base_font,model,'FonteCursiva Model 040',False); build(a.base_font,trace,'FonteCursiva Trace 040',True); preview(a.base_font,model,trace,prev)
+    build(a.base_font,model,'FonteCursiva Model 041',False); build(a.base_font,trace,'FonteCursiva Trace 041',True); preview(a.base_font,model,trace,prev)
     print(model); print(trace); print(prev)
 if __name__=='__main__': main()
